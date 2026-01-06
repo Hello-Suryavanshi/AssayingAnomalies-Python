@@ -111,3 +111,44 @@ def map_gvkey_to_permno(
     out = out.rename(columns={"lpermno": "permno"})
     out["permno"] = out["permno"].astype("Int64")
     return out
+
+
+def clean_ccm_linkhist(linkhist: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean CCM link history table.
+
+    Expected columns (case-insensitive):
+      gvkey, lpermno, linkdt, linkenddt, linktype, linkprim
+
+    Returns
+    -------
+    DataFrame with standardized column names and parsed dates.
+    """
+    df = linkhist.copy()
+    df.columns = pd.Index([str(c).lower() for c in df.columns])
+
+    required = {"gvkey", "lpermno", "linkdt", "linkenddt"}
+    missing = required - set(df.columns)
+    if missing:
+        raise KeyError(f"linkhist missing columns: {missing}")
+
+    df["linkdt"] = pd.to_datetime(df["linkdt"], errors="coerce")
+    df["linkenddt"] = pd.to_datetime(df["linkenddt"], errors="coerce")
+
+    # In CCM, missing linkenddt means "still active"
+    df["linkenddt"] = df["linkenddt"].fillna(pd.Timestamp("2099-12-31"))
+
+    # keep valid permnos only
+    df = df.dropna(subset=["gvkey", "lpermno", "linkdt", "linkenddt"]).copy()
+    df["lpermno"] = df["lpermno"].astype(int)
+
+    # Optional filters if present
+    if "linktype" in df.columns:
+        df["linktype"] = df["linktype"].astype(str)
+        df = df[df["linktype"].isin(["LC", "LU", "LS", "LD"])]
+
+    if "linkprim" in df.columns:
+        df["linkprim"] = df["linkprim"].astype(str)
+        df = df[df["linkprim"].isin(["P", "C"])]
+
+    return df.reset_index(drop=True)
