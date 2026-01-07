@@ -1,5 +1,10 @@
 """
 Minimal univariate portfolio sorts (EW & VW), optional NYSE breakpoints.
+
+This simplified implementation is used by tests and scripts as a
+lightweight substitute for the full :mod:`aa.asset_pricing.univariate`
+function.  It is kept separate to avoid polluting the public API with
+test‑only helpers.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ def _bin_edges(x: pd.Series, n: int) -> np.ndarray:
     """
     Robust bin edge finder:
     - Uses qcut with duplicates='drop' to ensure strictly increasing edges.
-    - Falls back to linear-spaced edges over data range if qcut fails.
+    - Falls back to linear‑spaced edges over data range if qcut fails.
     """
     x = pd.to_numeric(x, errors="coerce")
     x = x[np.isfinite(x)]
@@ -113,7 +118,7 @@ def univariate_sort(
         g = g.copy()
         g["bin"] = (bins.astype("Int64") + 1).astype("Int64")
 
-        # Vectorized EW & VW per bin — no GroupBy.apply
+        # Vectorised EW & VW per bin — no GroupBy.apply
         # EW: simple mean of ret
         # VW: sum(me*ret)/sum(me), guarding denom<=0 or missing 'me'
         g["ret"] = pd.to_numeric(g["ret"], errors="coerce")

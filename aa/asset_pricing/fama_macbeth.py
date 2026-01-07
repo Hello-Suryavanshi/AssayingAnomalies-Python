@@ -14,19 +14,6 @@ The implementation here is fully vectorised and uses only ``pandas``,
 ``numpy`` and ``statsmodels``.  It returns both the average risk
 prices and the full time series of monthly estimates.  See the
 function ``fama_macbeth`` for details.
-
-MATLAB → Python mapping
-------------------------
-The MATLAB function ``runFamaMacBeth.m`` performs a two‑pass
-cross‑sectional regression using Fama–MacBeth methodology.  It
-produces average risk prices and Newey–West standard errors.  The
-Python function ``fama_macbeth`` below replicates this behaviour.
-It accepts a panel DataFrame with a time index (``yyyymm``) and
-characteristic columns, and returns a DataFrame of average risk prices
-and a DataFrame of period‑by‑period estimates.  The default number of
-Newey–West lags is chosen following common practice as
-``floor(4 * (T/100)^(2/9))`` where ``T`` is the number of periods.
-Users may override this by specifying the ``nw_lags`` argument.
 """
 
 from __future__ import annotations
@@ -37,10 +24,11 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
+__all__ = ["fama_macbeth"]
+
 
 def _long_run_variance(series: np.ndarray, lags: int) -> float:
-    """Compute the Newey–West long‑run variance for a 1‑D array.
-
+    r"""Compute the Newey–West long-run variance for a 1-D array.
     Parameters
     ----------
     series : ndarray
@@ -60,7 +48,7 @@ def _long_run_variance(series: np.ndarray, lags: int) -> float:
 
     .. math::
 
-       \\gamma_0 + 2 \\sum_{k=1}^L \\left(1 - \\frac{k}{L+1}\\right) \\gamma_k,
+       \gamma_0 + 2 \sum_{k=1}^L \left(1 - \frac{k}{L+1}\right) \gamma_k,
 
     where ``γ_k`` is the lag‑k autocovariance of ``series``.
     """
@@ -86,7 +74,8 @@ def fama_macbeth(
     time_col: str = "yyyymm",
     nw_lags: int | None = None,
 ) -> Tuple[pd.Series, pd.DataFrame, pd.Series]:
-    """Estimate Fama–MacBeth risk prices and Newey–West standard errors.
+    """
+    Estimate Fama–MacBeth risk prices and Newey–West standard errors.
 
     Parameters
     ----------
@@ -116,20 +105,7 @@ def fama_macbeth(
     lambda_ts : DataFrame
         Period‑by‑period coefficients.  Rows correspond to periods.
     se : Series
-        Newey–West standard errors of the average coefficients.
-
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> from aa.asset_pricing import fama_macbeth
-    >>> df = pd.DataFrame({
-    ...     "yyyymm": [202101, 202101, 202102, 202102],
-    ...     "ret": [0.01, 0.02, 0.03, 0.04],
-    ...     "beta": [1.0, 2.0, 1.5, 2.5],
-    ... })
-    >>> lambdas, lambda_ts, se = fama_macbeth(df, y="ret", xcols=["beta"])
-    >>> round(lambdas["beta"], 4)
-    0.02
+        Newey‑West standard errors of the average coefficients.
     """
     if xcols is None:
         xcols = []
@@ -143,16 +119,51 @@ def fama_macbeth(
             raise KeyError(f"panel is missing regressor column '{col}'")
 
     coeffs: list[pd.Series] = []
+    # We iterate through periods and handle missing values explicitly.  If
+    # a given period has no valid observations for the specified
+    # regressors, we record NaNs for that period.  This avoids
+    # situations where statsmodels raises a ValueError on an empty
+    # design matrix.
     for period, grp in panel.groupby(time_col):
-        yv = grp[y]
+        # Build mask of rows with non‑missing y and all xcols
+        mask = grp[y].notna()
+        for col in xcols:
+            mask &= grp[col].notna()
+        grp_valid = grp.loc[mask]
+        # Determine design matrix
         if xcols:
-            X = grp[list(xcols)]
+            # If no valid rows, record NaNs and continue
+            if grp_valid.empty:
+                coeff = pd.Series(
+                    {"const": np.nan, **{c: np.nan for c in xcols}}, name=period
+                )
+                coeffs.append(coeff)
+                continue
+            yv = grp_valid[y]
+            X = grp_valid[list(xcols)]
             X = sm.add_constant(X, has_constant="add")
         else:
-            X = pd.DataFrame({"const": np.ones(len(grp), dtype=float)})
-        model = sm.OLS(yv, X, missing="drop")
-        res = model.fit()
-        coeffs.append(res.params.rename(period))
+            # No regressors, just intercept; drop missing y
+            if grp_valid.empty:
+                coeffs.append(pd.Series({"const": np.nan}, name=period))
+                continue
+            yv = grp_valid[y]
+            X = pd.DataFrame(
+                {"const": np.ones(len(grp_valid), dtype=float)}, index=grp_valid.index
+            )
+        # Fit OLS without automatically dropping more missing, since we've filtered
+        try:
+            model = sm.OLS(yv, X)
+            res = model.fit()
+            coeff = res.params.rename(period)
+        except Exception:
+            # If regression fails for any reason, record NaNs
+            coeff = pd.Series({col: np.nan for col in X.columns}, name=period)
+        # Ensure all expected columns are present
+        for col in ["const"] + list(xcols):
+            if col not in coeff.index:
+                coeff.loc[col] = np.nan
+        coeffs.append(coeff)
 
     lambda_ts = pd.DataFrame(coeffs).sort_index()
     lambda_ts = lambda_ts.reindex(columns=lambda_ts.columns, fill_value=np.nan)

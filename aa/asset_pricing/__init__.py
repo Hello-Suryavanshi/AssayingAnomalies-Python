@@ -1,5 +1,5 @@
 """
-Asset pricing routines (portfolio sorts, factor models, regressions).
+Asset pricing routines (portfolio sorts, regressions).
 """
 
 from .fama_macbeth import fama_macbeth

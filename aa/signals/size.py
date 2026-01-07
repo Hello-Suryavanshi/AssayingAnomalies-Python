@@ -1,58 +1,55 @@
-"""Compute size (market equity) anomaly signal.
+"""
+Construction of the size anomaly signal.
 
-This module provides a simple example of a signal constructor.  It
-takes a CRSP monthly file with price, shares outstanding and returns
-columns and computes the lagged market equity as the signal.  This
-function serves as a template for constructing more complex signals
-later in the porting process.
+The size characteristic in the Assaying Anomalies framework is defined
+as the negative logarithm of a firm's market equity.  To avoid look‑
+ahead bias, market equity is lagged one month prior to computing the
+signal.  This module implements a pure function that accepts CRSP
+monthly data and returns a tidy DataFrame of signals.
 
 MATLAB → Python mapping
 ------------------------
-In the MATLAB code the size signal can be derived using the
-``makeUnivSortInd`` pipeline, which relies on market equity (``me``)
-from CRSP.  The Python function ``compute_size`` below simply
-computes market equity (price × shares) and lags it by one month,
-returning a DataFrame with columns ``date``, ``permno`` and
-``signal``.
+The MATLAB function ``makeSizeSignal`` computes ``size = -log(ME)`` on
+lagged market equity.  The Python function ``compute_size_signal`` here
+follows the same logic, returning a DataFrame with columns ``date``,
+``permno`` and ``signal``.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 
-def compute_size(crsp: pd.DataFrame) -> pd.DataFrame:
-    """Compute the size signal (lagged market equity).
+def compute_size_signal(crsp: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute the lagged size signal from CRSP data.
 
     Parameters
     ----------
     crsp : DataFrame
-        Must contain at least ``date``, ``permno``, ``prc`` (price) and
-        ``shrout`` (shares outstanding).  The date column should
-        represent the month end.
+        Must contain columns ``date``, ``permno`` and ``me`` (market equity).
 
     Returns
     -------
     DataFrame
-        DataFrame with columns ``date``, ``permno`` and ``signal``
-        representing the lagged market equity.  Rows with missing
-        inputs are dropped.
+        Columns: ``date``, ``permno``, ``signal`` where ``signal`` is
+        ``-log(me_lag)`` and ``me_lag`` is the prior month market equity.
 
     Notes
     -----
-    Market equity is computed as ``abs(prc) * shrout / 1000`` to put
-    the units in millions.  The resulting series is lagged by one
-    month to avoid look‑ahead bias when sorting on size.
+    Rows for which ``me`` is missing in the prior month will have NaN
+    signals.
     """
-    required_cols = {"date", "permno", "prc", "shrout"}
-    missing = required_cols - set(crsp.columns)
+    required = {"date", "permno", "me"}
+    missing = required - set(crsp.columns)
     if missing:
-        raise KeyError(f"crsp is missing columns: {missing}")
-    df = crsp.copy()
-    df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.tz_localize(None)
-    df["me"] = df["prc"].abs() * df["shrout"] / 1000.0
-    df = df.sort_values(["permno", "date"]).reset_index(drop=True)
-    df["signal"] = df.groupby("permno")["me"].shift(1)
-    out = df[["date", "permno", "signal"]].dropna(subset=["signal"]).copy()
-    out["signal"] = out["signal"].astype(float)
-    return out
+        raise KeyError(f"crsp is missing required columns: {sorted(missing)}")
+    # sort to ensure lagging is correct
+    df = crsp.copy().sort_values(["permno", "date"]).reset_index(drop=True)
+    df["me"] = pd.to_numeric(df["me"], errors="coerce")
+    # lag ME by one observation per permno
+    df["me_lag"] = df.groupby("permno")["me"].shift(1)
+    # compute signal: negative log of lagged ME
+    df["signal"] = -np.log(df["me_lag"].astype(float))
+    return df[["date", "permno", "signal"]]

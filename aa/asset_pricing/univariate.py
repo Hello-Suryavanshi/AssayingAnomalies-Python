@@ -1,20 +1,20 @@
-"""Univariate portfolio sorts and high-low (H-L) series.
+"""Univariate portfolio sorts and high‑low (H‑L) series.
 
 This module implements univariate sorts akin to the MATLAB functions
-``makeUnivSortInd`` and ``runUnivSort`` found in the AssayingAnomalies
-toolkit. Given asset returns and a cross-sectional signal, assets are
+``makeUnivSortInd`` and ``runUnivSort`` found in the Assaying Anomalies
+toolkit.  Given asset returns and a cross‑sectional signal, assets are
 ranked into ``n_bins`` portfolios each period using either the full
-universe or only NYSE stocks to determine breakpoints. The module
-supports both equal-weighted (EW) and value-weighted (VW) returns and
-produces time-series and summary tables along with a high-minus-low series.
+universe or only NYSE stocks to determine breakpoints.  The module
+supports both equal‑weighted (EW) and value‑weighted (VW) returns and
+produces time‑series and summary tables along with a high‑minus‑low series.
 
 MATLAB → Python mapping
 ------------------------
 The MATLAB pipeline computes portfolio assignments via ``makeUnivSortInd.m``
 and then calls ``runUnivSort.m`` to compute portfolio returns and long–short
-spreads. The Python function ``univariate_sort`` below consolidates these
+spreads.  The Python function ``univariate_sort`` below consolidates these
 steps: it assigns bins within each period and computes EW and VW returns
-directly. The ``SortConfig`` dataclass mirrors the optional arguments in the
+directly.  The ``SortConfig`` dataclass mirrors the optional arguments in the
 MATLAB functions (e.g. number of bins, NYSE breakpoints, minimum observations).
 """
 
@@ -28,12 +28,13 @@ import pandas as pd
 
 __all__ = ["SortConfig", "univariate_sort"]
 
-LS_LABEL = "L\u2011S"  # "L-S" with NON-BREAKING HYPHEN (U+2011)
+LS_LABEL = "L\u2011S"  # "L-S" with non-breaking hyphen (U+2011)
 
 
 @dataclass(frozen=True)
 class SortConfig:
-    """Configuration for univariate sorts.
+    """
+    Configuration for univariate sorts.
 
     Parameters
     ----------
@@ -83,7 +84,8 @@ def univariate_sort(
     exch: Optional[pd.DataFrame] = None,
     config: SortConfig = SortConfig(),
 ) -> Dict[str, pd.DataFrame]:
-    """Perform univariate portfolio sorts and return time-series + summary.
+    """
+    Perform univariate portfolio sorts and return time‑series and summary.
 
     Parameters
     ----------
@@ -95,14 +97,14 @@ def univariate_sort(
         Columns: date, permno, me (market equity used for VW weights)
     exch : DataFrame, optional
         Columns: date, permno, exchcd (NYSE == 1)
-    config : SortConfig
+    config : SortConfig, optional
         Sort settings (bins, NYSE breakpoints, min_obs)
 
     Returns
     -------
     dict with keys:
-      - "time_series": DataFrame with columns date, bin, ret_ew, ret_vw
-      - "summary": DataFrame with mean ret_ew/ret_vw by bin + one L-S row
+      - ``time_series``: DataFrame with columns date, bin, ret_ew, ret_vw
+      - ``summary``: DataFrame with mean ret_ew/ret_vw by bin and one L‑S row
     """
     # Normalize dates
     for df in (returns, signal, size, exch):
@@ -153,11 +155,10 @@ def univariate_sort(
 
         g["bin"] = (g["bin"].astype("Int64") + 1).astype("Int64")
 
-        # Equal-weighted
-
+        # Equal‑weighted
         ew = g.groupby("bin", as_index=False).agg(ret_ew=("ret", "mean"))
 
-        # Value-weighted (if 'me' present and finite)
+        # Value‑weighted (if 'me' present and finite)
         if size is not None and "me" in g.columns:
             tmp = g[["bin", "ret", "me"]].copy()
             tmp = tmp[np.isfinite(tmp["me"].to_numpy(dtype=float))]
@@ -178,7 +179,7 @@ def univariate_sort(
         out["bin"] = out["bin"].astype("Int64")
         return out[["date", "bin", "ret_ew", "ret_vw"]]
 
-    # Build time-series without groupby.apply (avoids warnings)
+    # Build time‑series without groupby.apply to avoid nested overhead
     pieces: list[pd.DataFrame] = []
     for dt, g in base.groupby("date", sort=True):
         res = month_sort(g)
