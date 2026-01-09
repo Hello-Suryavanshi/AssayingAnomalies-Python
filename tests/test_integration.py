@@ -36,22 +36,30 @@ def test_integration_end_to_end():
     size_signal_df = compute_size_signal(size_df)
     # Book‑to‑market: create pseudo price and book equity
     # Provide market equity directly as required by compute_book_to_market_signal
+    # Book-to-market: create pseudo price and book equity
+    # Provide market equity directly as required by compute_book_to_market_signal
     crsp = pd.DataFrame(
         {
             "date": dates.repeat(len(firms)),
             "permno": np.tile(firms, len(dates)),
-            "me": 50.0,
+            # vary by firm so bm varies cross-sectionally
+            "me": np.tile([float(f * 50) for f in firms], len(dates)),
         }
     )
+
     comp = pd.DataFrame(
         {
             "datadate": pd.to_datetime(
                 [d - pd.DateOffset(months=6) for d in dates]
             ).repeat(len(firms)),
             "permno": np.tile(firms, len(dates)),
+            # can stay constant; bm varies because me varies
             "be": 100.0,
         }
     )
+
+    bm_signal_df = compute_book_to_market_signal(crsp=crsp, funda=comp)
+
     bm_signal_df = compute_book_to_market_signal(crsp=crsp, funda=comp)
     # Momentum signal
     mom_signal_df = compute_momentum_signal(returns)
