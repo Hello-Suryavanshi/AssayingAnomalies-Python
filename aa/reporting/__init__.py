@@ -10,6 +10,9 @@ Example
 >>> table = portfolio_returns_table(summary_df, value_weighted=False)
 >>> print(table["markdown"])
 
+Milestone 4 adds stability reporting functions under
+``aa.reporting.stability_tables``.  These functions produce tables
+comparing results across regimes or robustness configurations.
 """
 
 from .tables import (
@@ -17,9 +20,17 @@ from .tables import (
     high_low_table,
     fama_macbeth_table,
 )
+from .stability_tables import (
+    stability_table,
+    robustness_table,
+    null_distribution_summary,
+)
 
 __all__ = [
     "portfolio_returns_table",
     "high_low_table",
     "fama_macbeth_table",
+    "stability_table",
+    "robustness_table",
+    "null_distribution_summary",
 ]

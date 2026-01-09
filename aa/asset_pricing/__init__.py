@@ -17,17 +17,15 @@ Importing this module brings the most commonly used routines into the
 ``aa.asset_pricing`` namespace.
 """
 
-from .univariate import SortConfig, univariate_sort
-from .double_sort import DoubleSortConfig, double_sort
-from .characteristic import characteristic_managed_portfolio
-from .fama_macbeth import fama_macbeth, fama_macbeth_full
+from .univariate import SortConfig, univariate_sort  # noqa: F401
+from .double_sort import DoubleSortConfig, double_sort  # noqa: F401
+from .fama_macbeth import fama_macbeth, fama_macbeth_full  # noqa: F401
 
 __all__ = [
     "SortConfig",
     "univariate_sort",
     "DoubleSortConfig",
     "double_sort",
-    "characteristic_managed_portfolio",
     "fama_macbeth",
     "fama_macbeth_full",
 ]

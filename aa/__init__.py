@@ -16,8 +16,8 @@ Pythonic design principles:
 * Pipelines are composable – the output of one stage feeds directly
   into the next.
 
-Subpackages
------------
+Subpackages and modules
+-----------------------
 
 The top‑level ``aa`` package exposes the following submodules:
 
@@ -36,13 +36,18 @@ The top‑level ``aa`` package exposes the following submodules:
     Utilities for producing Markdown and LaTeX tables suitable for
     inclusion in academic papers or reports.
 
-``prep``
-    Panel construction utilities for merging CRSP, Compustat and CCM
-    data.  In this simplified port the Compustat cleaning routines
-    remain deferred; however the interface is provided for future
-    extension.
+In addition to the original modules, milestone 4 introduces several
+new modules: ``aa.regime`` for regime analysis, ``aa.robustness`` for
+systematic sensitivity checks, ``aa.diagnostics`` for stability
+diagnostics, ``aa.multiple_testing`` for multiple‑testing controls, and
+``aa.simulation`` for placebo experiments.  These modules are not
+imported by default but can be accessed directly via ``aa.regime`` and
+similarly for others.
 """
 
-from . import signals, asset_pricing, reporting
+from . import asset_pricing, reporting  # noqa: F401  # re-export subpackages
 
-__all__ = ["signals", "asset_pricing", "reporting"]
+__all__ = [
+    "asset_pricing",
+    "reporting",
+]

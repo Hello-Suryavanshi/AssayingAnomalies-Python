@@ -28,7 +28,7 @@ control over table appearance should post‑process the returned strings.
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Any
 
 import pandas as pd
 
@@ -39,17 +39,48 @@ def _format_table(df: pd.DataFrame) -> Dict[str, str]:
     """Internal helper to format a DataFrame into Markdown and LaTeX.
 
     Floats are rounded to three decimal places.  The index and column
-    names are included in the output.
+    names are included in the output.  If pandas' optional dependencies
+    needed for ``to_markdown`` or ``to_latex`` are unavailable, the
+    function falls back to a simple pipe‑delimited Markdown table and
+    returns an empty string for LaTeX.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The table to format.  Index and column names are retained.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys ``markdown`` and ``latex`` containing the
+        formatted table in Markdown and LaTeX, respectively.
     """
-    # Round numeric columns
+    # Copy the DataFrame and round floating-point columns for readability
     fmt_df = df.copy()
     for col in fmt_df.columns:
         if pd.api.types.is_float_dtype(fmt_df[col]):
             fmt_df[col] = fmt_df[col].map(lambda x: f"{x:.3f}" if pd.notna(x) else "")
-    # Markdown
-    md = fmt_df.to_markdown(index=True)
-    # LaTeX
-    latex = fmt_df.to_latex(index=True, escape=False)
+    # Construct Markdown using pandas' to_markdown if available
+    try:
+        md = fmt_df.to_markdown(index=True)
+    except Exception:
+        # Build a simple pipe‑delimited Markdown table as a fallback
+        header_vals = [fmt_df.index.name or ""] + list(fmt_df.columns)
+        header = "| " + " | ".join([str(c) for c in header_vals]) + " |"
+        separator = "|" + "|".join(["---" for _ in header_vals]) + "|"
+        rows = []
+        for idx, row in fmt_df.iterrows():
+            row_vals = [str(idx)] + [
+                str(row[c]) if row[c] != "" else "" for c in fmt_df.columns
+            ]
+            rows.append("| " + " | ".join(row_vals) + " |")
+        md = "\n".join([header, separator] + rows)
+    # Construct LaTeX using pandas' to_latex if available
+    try:
+        latex = fmt_df.to_latex(index=True, escape=False)
+    except Exception:
+        # If LaTeX support is unavailable, return an empty string
+        latex = ""
     return {"markdown": md, "latex": latex}
 
 
@@ -139,7 +170,7 @@ def high_low_table(
 
 
 def fama_macbeth_table(
-    fm_results: Dict[str, pd.DataFrame | pd.Series],
+    fm_results: Dict[str, Any],
 ) -> Dict[str, str]:
     """
     Format Fama–MacBeth regression results into a table.

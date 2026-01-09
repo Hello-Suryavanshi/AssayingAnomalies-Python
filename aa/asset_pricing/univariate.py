@@ -11,11 +11,11 @@ value‑weighted (VW) returns and produces time‑series and summary
 tables along with a high‑minus‑low series.
 
 MATLAB → Python mapping
-------------------------
+-----------------------
 The MATLAB pipeline computes portfolio assignments via
 ``makeUnivSortInd.m`` and then calls ``runUnivSort.m`` to compute
 portfolio returns and long–short spreads.  The Python function
-:func:`univariate_sort` below consolidates these steps: it assigns
+``univariate_sort`` below consolidates these steps: it assigns
 bins within each period and computes EW and VW returns directly.  The
 :class:`SortConfig` dataclass mirrors the optional arguments in the
 MATLAB functions (e.g. number of bins, NYSE breakpoints, minimum
@@ -32,7 +32,7 @@ import pandas as pd
 
 __all__ = ["SortConfig", "univariate_sort"]
 
-LS_LABEL = "L\u2011S"  # "L-S" with non-breaking hyphen (U+2011)
+LS_LABEL = "L‑S"  # "L-S" with non-breaking hyphen (U+2011)
 
 
 @dataclass(frozen=True)
