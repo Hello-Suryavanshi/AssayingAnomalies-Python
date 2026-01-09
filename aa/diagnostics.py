@@ -45,7 +45,8 @@ from typing import Any, Dict, Sequence, Tuple
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy import stats  # type: ignore[import-not-found]
+from scipy import stats
+
 
 from .asset_pricing.fama_macbeth import fama_macbeth_full
 

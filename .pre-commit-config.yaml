@@ -16,5 +16,6 @@ repos:
       - id: mypy
         additional_dependencies:
           - pandas-stubs
-        args:
-          - --config-file=mypy.ini
+          - scipy
+          - scipy-stubs
+
