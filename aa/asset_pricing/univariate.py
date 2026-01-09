@@ -1,21 +1,25 @@
-"""Univariate portfolio sorts and high‑low (H‑L) series.
+"""
+Univariate portfolio sorts and high‑low (H‑L) series.
 
 This module implements univariate sorts akin to the MATLAB functions
-``makeUnivSortInd`` and ``runUnivSort`` found in the Assaying Anomalies
-toolkit.  Given asset returns and a cross‑sectional signal, assets are
-ranked into ``n_bins`` portfolios each period using either the full
-universe or only NYSE stocks to determine breakpoints.  The module
-supports both equal‑weighted (EW) and value‑weighted (VW) returns and
-produces time‑series and summary tables along with a high‑minus‑low series.
+``makeUnivSortInd`` and ``runUnivSort`` found in the Assaying
+Anomalies toolkit.  Given asset returns and a cross‑sectional
+signal, assets are ranked into ``n_bins`` portfolios each period
+using either the full universe or only NYSE stocks to determine
+breakpoints.  The module supports both equal‑weighted (EW) and
+value‑weighted (VW) returns and produces time‑series and summary
+tables along with a high‑minus‑low series.
 
 MATLAB → Python mapping
 ------------------------
-The MATLAB pipeline computes portfolio assignments via ``makeUnivSortInd.m``
-and then calls ``runUnivSort.m`` to compute portfolio returns and long–short
-spreads.  The Python function ``univariate_sort`` below consolidates these
-steps: it assigns bins within each period and computes EW and VW returns
-directly.  The ``SortConfig`` dataclass mirrors the optional arguments in the
-MATLAB functions (e.g. number of bins, NYSE breakpoints, minimum observations).
+The MATLAB pipeline computes portfolio assignments via
+``makeUnivSortInd.m`` and then calls ``runUnivSort.m`` to compute
+portfolio returns and long–short spreads.  The Python function
+:func:`univariate_sort` below consolidates these steps: it assigns
+bins within each period and computes EW and VW returns directly.  The
+:class:`SortConfig` dataclass mirrors the optional arguments in the
+MATLAB functions (e.g. number of bins, NYSE breakpoints, minimum
+observations).
 """
 
 from __future__ import annotations
@@ -59,7 +63,6 @@ def _bin_edges(x: pd.Series, n: int) -> np.ndarray:
     x = x[np.isfinite(x)]
     if x.empty:
         return np.array([], dtype=float)
-
     # Prefer quantile-based bins (like MATLAB ranks -> quantiles)
     try:
         _, bins = pd.qcut(x, q=n, retbins=True, duplicates="drop")
@@ -68,7 +71,6 @@ def _bin_edges(x: pd.Series, n: int) -> np.ndarray:
             return bins
     except Exception:
         pass
-
     # Fallback: equal-width bins
     xmin, xmax = float(np.min(x)), float(np.max(x))
     if xmax <= xmin:
@@ -112,7 +114,6 @@ def univariate_sort(
             df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.tz_localize(
                 None
             )
-
     # Merge inputs
     base = signal.merge(returns, on=["date", "permno"], how="inner", validate="m:1")
     if size is not None:
@@ -123,41 +124,32 @@ def univariate_sort(
         base = base.merge(
             exch[["date", "permno", "exchcd"]], on=["date", "permno"], how="left"
         )
-
     # Ensure required cols exist
     if "signal" not in base.columns or "ret" not in base.columns:
         raise KeyError("Merged data must contain 'signal' and 'ret' columns.")
-
     # If exchcd missing, treat as non-NYSE
     if "exchcd" not in base.columns:
         base["exchcd"] = np.nan
 
     def month_sort(g: pd.DataFrame) -> pd.DataFrame:
         g = g.copy()
-
         bp_univ = g[g["exchcd"] == 1] if config.nyse_breaks else g
         if len(bp_univ) < config.min_obs or len(g) < config.min_obs:
             return pd.DataFrame(columns=["date", "bin", "ret_ew", "ret_vw"])
-
         edges = _bin_edges(bp_univ["signal"], config.n_bins)
         if edges.size < 2:
             return pd.DataFrame(columns=["date", "bin", "ret_ew", "ret_vw"])
-
         bins_list: list[float] = [
             float(v) for v in np.asarray(edges, dtype=float).tolist()
         ]
         g["bin"] = pd.cut(
             g["signal"], bins=bins_list, labels=False, include_lowest=True, right=True
         )
-
         if g["bin"].isna().all():
             return pd.DataFrame(columns=["date", "bin", "ret_ew", "ret_vw"])
-
         g["bin"] = (g["bin"].astype("Int64") + 1).astype("Int64")
-
         # Equal‑weighted
         ew = g.groupby("bin", as_index=False).agg(ret_ew=("ret", "mean"))
-
         # Value‑weighted (if 'me' present and finite)
         if size is not None and "me" in g.columns:
             tmp = g[["bin", "ret", "me"]].copy()
@@ -173,27 +165,23 @@ def univariate_sort(
         else:
             vw = ew[["bin"]].copy()
             vw["ret_vw"] = np.nan
-
         out = ew.merge(vw, on="bin", how="left")
         out["date"] = g["date"].iloc[0]
         out["bin"] = out["bin"].astype("Int64")
         return out[["date", "bin", "ret_ew", "ret_vw"]]
 
-    # Build time‑series without groupby.apply to avoid nested overhead
+    # Build time‑series
     pieces: list[pd.DataFrame] = []
     for dt, g in base.groupby("date", sort=True):
         res = month_sort(g)
         if not res.empty:
             pieces.append(res)
-
     if pieces:
         ts = pd.concat(pieces, ignore_index=True)
     else:
         ts = pd.DataFrame(columns=["date", "bin", "ret_ew", "ret_vw"])
-
     # Summary across time
     summ = ts.groupby("bin", as_index=False)[["ret_ew", "ret_vw"]].mean()
-
     # Add L-S row
     if (
         not summ.empty
@@ -214,5 +202,4 @@ def univariate_sort(
             }
         )
         summ = pd.concat([summ, ls], ignore_index=True)
-
     return {"time_series": ts, "summary": summ}

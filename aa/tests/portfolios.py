@@ -146,7 +146,7 @@ def univariate_sort(
         out = _month_sort(g)
         if not out.empty:
             out = out.copy()
-            out.insert(0, "date", pd.Timestamp(d))
+            out.insert(0, "date", pd.to_datetime(cast("str", d), errors="coerce"))
             frames.append(out)
 
     if frames:

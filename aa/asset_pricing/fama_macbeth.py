@@ -1,34 +1,42 @@
-"""Fama–MacBeth two‑pass regression estimator with Newey–West errors.
+"""
+Fama–MacBeth two‑pass regression estimators.
 
-This module implements the cross‑sectional regression procedure known
-as the Fama–MacBeth (1973) estimator.  It follows the workflow
-outlined in the MATLAB function ``runFamaMacBeth.m`` found in the
-``AssayingAnomalies`` toolkit.  In the first pass, returns are
-regressed on one or more characteristics separately in each time
-period.  The resulting series of coefficients (risk prices) are then
-averaged in the second pass.  Standard errors are computed using the
-Newey–West (HAC) estimator to account for potential autocorrelation in
-the time series of estimated risk prices.
+This module provides implementations of the cross‑sectional regression
+procedures commonly used in asset pricing.  The basic estimator,
+known as the Fama–MacBeth (1973) two‑pass method, fits a cross‑sectional
+regression in each time period and then averages the resulting series
+of coefficients.  Newey–West heteroskedasticity and autocorrelation
+consistent (HAC) standard errors are used to account for serial
+correlation in the estimated risk prices.
 
-The implementation here is fully vectorised and uses only ``pandas``,
-``numpy`` and ``statsmodels``.  It returns both the average risk
-prices and the full time series of monthly estimates.  See the
-function ``fama_macbeth`` for details.
+Two functions are provided:
+
+``fama_macbeth``
+    Replicates the original behaviour from earlier milestones.  It
+    returns average coefficients, the full time series of
+    period‑by‑period coefficients and their Newey–West standard errors.
+
+``fama_macbeth_full``
+    Extends the basic estimator to include t‑statistics and the
+    number of cross‑sectional observation periods used for each
+    coefficient.  This function is the recommended interface for
+    multi‑factor regressions in milestone 3.
 """
 
 from __future__ import annotations
 
-from typing import Sequence, Tuple
+from typing import Sequence, Tuple, Dict
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-__all__ = ["fama_macbeth"]
+__all__ = ["fama_macbeth", "fama_macbeth_full"]
 
 
 def _long_run_variance(series: np.ndarray, lags: int) -> float:
     r"""Compute the Newey–West long-run variance for a 1-D array.
+
     Parameters
     ----------
     series : ndarray
@@ -50,7 +58,7 @@ def _long_run_variance(series: np.ndarray, lags: int) -> float:
 
        \gamma_0 + 2 \sum_{k=1}^L \left(1 - \frac{k}{L+1}\right) \gamma_k,
 
-    where ``γ_k`` is the lag‑k autocovariance of ``series``.
+    where :math:`\gamma_k` is the lag‑k autocovariance of ``series``.
     """
     n = len(series)
     if n == 0:
@@ -80,9 +88,9 @@ def fama_macbeth(
     Parameters
     ----------
     panel : DataFrame
-        Long format panel of returns and characteristics.  Must contain
-        columns ``time_col``, ``y``, and each name in ``xcols``.  Each
-        row corresponds to an asset–month observation.
+        Long format panel of returns and characteristics.  Must
+        contain columns ``time_col``, ``y`` and each name in ``xcols``.
+        Each row corresponds to an asset–month observation.
     y : str, default "ret"
         Column name of the dependent variable (e.g. one‑month ahead
         returns).
@@ -95,7 +103,7 @@ def fama_macbeth(
     nw_lags : int, optional
         Number of Newey–West lags for the second‑pass standard errors.
         If None, an automatic lag length is chosen based on the number
-        of periods, following the rule of thumb ``floor(4*(T/100)**(2/9))``.
+        of periods.
 
     Returns
     -------
@@ -105,11 +113,16 @@ def fama_macbeth(
     lambda_ts : DataFrame
         Period‑by‑period coefficients.  Rows correspond to periods.
     se : Series
-        Newey‑West standard errors of the average coefficients.
+        Newey–West standard errors of the average coefficients.
+
+    Notes
+    -----
+    This function is retained for backward compatibility.  For
+    additional statistics such as t‑values and observation counts, use
+    :func:`fama_macbeth_full`.
     """
     if xcols is None:
         xcols = []
-
     if time_col not in panel.columns:
         raise KeyError(f"panel must contain time column '{time_col}'")
     if y not in panel.columns:
@@ -117,22 +130,13 @@ def fama_macbeth(
     for col in xcols:
         if col not in panel.columns:
             raise KeyError(f"panel is missing regressor column '{col}'")
-
     coeffs: list[pd.Series] = []
-    # We iterate through periods and handle missing values explicitly.  If
-    # a given period has no valid observations for the specified
-    # regressors, we record NaNs for that period.  This avoids
-    # situations where statsmodels raises a ValueError on an empty
-    # design matrix.
     for period, grp in panel.groupby(time_col):
-        # Build mask of rows with non‑missing y and all xcols
         mask = grp[y].notna()
         for col in xcols:
             mask &= grp[col].notna()
         grp_valid = grp.loc[mask]
-        # Determine design matrix
         if xcols:
-            # If no valid rows, record NaNs and continue
             if grp_valid.empty:
                 coeff = pd.Series(
                     {"const": np.nan, **{c: np.nan for c in xcols}}, name=period
@@ -143,7 +147,6 @@ def fama_macbeth(
             X = grp_valid[list(xcols)]
             X = sm.add_constant(X, has_constant="add")
         else:
-            # No regressors, just intercept; drop missing y
             if grp_valid.empty:
                 coeffs.append(pd.Series({"const": np.nan}, name=period))
                 continue
@@ -151,28 +154,22 @@ def fama_macbeth(
             X = pd.DataFrame(
                 {"const": np.ones(len(grp_valid), dtype=float)}, index=grp_valid.index
             )
-        # Fit OLS without automatically dropping more missing, since we've filtered
         try:
             model = sm.OLS(yv, X)
             res = model.fit()
             coeff = res.params.rename(period)
         except Exception:
-            # If regression fails for any reason, record NaNs
             coeff = pd.Series({col: np.nan for col in X.columns}, name=period)
-        # Ensure all expected columns are present
         for col in ["const"] + list(xcols):
             if col not in coeff.index:
                 coeff.loc[col] = np.nan
         coeffs.append(coeff)
-
     lambda_ts = pd.DataFrame(coeffs).sort_index()
     lambda_ts = lambda_ts.reindex(columns=lambda_ts.columns, fill_value=np.nan)
     lambdas = lambda_ts.mean(axis=0, skipna=True)
-
     T = lambda_ts.shape[0]
     if nw_lags is None:
         nw_lags = int(np.floor(4 * (T / 100.0) ** (2.0 / 9.0)))
-
     se_vals = {}
     for col in lambda_ts.columns:
         series = lambda_ts[col].dropna().to_numpy(dtype=float)
@@ -183,5 +180,42 @@ def fama_macbeth(
         lr_var = _long_run_variance(demeaned, nw_lags)
         se_vals[col] = np.sqrt(lr_var / series.size)
     se = pd.Series(se_vals)
-
     return lambdas, lambda_ts, se
+
+
+def fama_macbeth_full(
+    panel: pd.DataFrame,
+    y: str = "ret",
+    xcols: Sequence[str] | None = None,
+    *,
+    time_col: str = "yyyymm",
+    nw_lags: int | None = None,
+) -> Dict[str, pd.DataFrame | pd.Series]:
+    """
+    Extended Fama–MacBeth regression with t‑statistics and counts.
+
+    This function wraps :func:`fama_macbeth` but also computes
+    t‑statistics (coefficients divided by their standard errors) and
+    the number of cross‑sectional periods used to estimate each
+    coefficient.  Observation counts are based on the number of
+    non‑missing estimates in ``lambda_ts``.
+
+    Returns a dictionary with keys ``lambdas`` (Series),
+    ``lambda_ts`` (DataFrame), ``se`` (Series), ``tstat`` (Series) and
+    ``n_obs`` (Series).
+    """
+    lambdas, lambda_ts, se = fama_macbeth(
+        panel, y=y, xcols=xcols, time_col=time_col, nw_lags=nw_lags
+    )
+    # t‑statistics
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tstat = lambdas / se
+    # counts: number of periods with non‑missing coefficient
+    n_obs = lambda_ts.notna().sum(axis=0)
+    return {
+        "lambdas": lambdas,
+        "lambda_ts": lambda_ts,
+        "se": se,
+        "tstat": tstat,
+        "n_obs": n_obs,
+    }

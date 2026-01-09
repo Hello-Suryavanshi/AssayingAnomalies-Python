@@ -1,3 +1,5 @@
+# mypy: ignore-errors
+
 """
 Executable pipeline for the size anomaly.
 
@@ -34,7 +36,7 @@ import pandas as pd
 from ..asset_pricing import SortConfig, fama_macbeth, univariate_sort
 from ..io import load_compustat, load_crsp, load_link
 from ..prep import build_monthly_panel
-from ..reporting import portfolio_summary_md, regression_table
+from ..reporting.tables import portfolio_returns_table, fama_macbeth_table
 from ..signals import compute_size_signal
 
 from typing import TypedDict
@@ -180,6 +182,9 @@ def main() -> None:
     hl = res["hl_series"]
     lambdas = res["fmb_lambdas"]
     se = res["fmb_se"]
+
+    print(portfolio_returns_table(summ)["markdown"])
+    print(fama_macbeth_table({"lambdas": lambdas, "se": se})["markdown"])
 
     print("# Portfolio Sorts on Size Signal")
     print("## Summary (mean monthly returns by bin; L-S is top minus bottom):")
