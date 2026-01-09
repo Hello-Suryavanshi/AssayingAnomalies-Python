@@ -58,7 +58,10 @@ class DoubleSortConfig:
     min_obs : int, default 20
         Minimum number of observations required in the breakpoint
         universe and the full universe to form portfolios in a given
-        month.
+        month. If ``min_obs`` exceeds the feasible sample size in a
+        period (common in tiny synthetic tests), the effective threshold
+        is clamped to the period's available sample size to avoid
+        dropping all periods.
     conditional : bool, default False
         If True, perform a conditional sort: first sort on
         ``signal_1``, then within each ``signal_1`` bin compute
@@ -176,8 +179,11 @@ def double_sort(
         else:
             bp_univ = g
 
-        # Guardrails
-        if len(bp_univ) < config.min_obs or len(g) < config.min_obs:
+        # Guardrails (clamp min_obs to feasible sample size in this period)
+        if g.empty or bp_univ.empty:
+            continue
+        effective_min_obs = min(config.min_obs, len(g), len(bp_univ))
+        if len(bp_univ) < effective_min_obs or len(g) < effective_min_obs:
             continue
 
         # Edges for first signal
@@ -193,9 +199,8 @@ def double_sort(
         if config.conditional:
             g["bin2"] = pd.NA
             for b1 in g["bin1"].dropna().unique():
-                b1_int = int(b1)
                 if config.nyse_breaks:
-                    sub_univ = bp_univ[bp_univ["bin1"] == b1]
+                    sub_univ = g[(g["exchcd"] == 1) & (g["bin1"] == b1)]
                 else:
                     sub_univ = g[g["bin1"] == b1]
 
@@ -206,7 +211,6 @@ def double_sort(
                     g.loc[g["bin1"] == b1, "bin2"] = _assign_bins(
                         g.loc[g["bin1"] == b1, "signal2"], sub_edges
                     )
-                _ = b1_int  # silence “unused” in type-checkers (no runtime effect)
         else:
             edges2 = _bin_edges(bp_univ["signal2"], config.n_bins_2)
             if edges2.size < 2:
